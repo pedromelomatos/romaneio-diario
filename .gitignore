@@ -1,0 +1,30 @@
+# Python e ambientes locais
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Credenciais e configuração específica da empresa
+.env
+.env.*
+!.env.example
+acesso.dat
+token*.json
+credentials*.json
+client_secret*.json
+/lojas.json
+
+# Roteiros, logs e arquivos auxiliares gerados
+outputs/
+*.log
+*.inspect.ndjson
+~$*
+
+# Arquivos locais do sistema operacional
+Thumbs.db
+Desktop.ini
+.DS_Store
+
