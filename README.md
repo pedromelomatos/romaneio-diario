@@ -90,6 +90,9 @@ As fórmulas e a área de impressão acompanham a quantidade de notas geradas.
 é uma configuração local da empresa e não é enviado ao GitHub. Ao clonar o projeto,
 copie `lojas.exemplo.json` para `lojas.json` e substitua os IDs fictícios pelos IDs
 das lojas na sua conta Bling. Duas lojas podem ter o mesmo nome de marketplace.
+Para excluir uma loja do roteiro, use `null` como valor do respectivo ID,
+conforme o exemplo fictício em `lojas.exemplo.json`. A exclusão vale para qualquer
+data consultada, inclusive nos agendamentos; as notas dessa loja não entram nos totais.
 Uma loja nova é incluída como
 **Loja ID**, sem omitir suas notas; edite esse arquivo para nomeá-la.
 O número da venda vem de `numeroPedidoLoja` no detalhe da NF-e, sem exigir

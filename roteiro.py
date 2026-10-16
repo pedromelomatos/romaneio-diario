@@ -52,21 +52,27 @@ class Registro:
     marketplace: str
 
 
-def carregar_lojas(arquivo: Path) -> dict[str, str]:
+def carregar_lojas(arquivo: Path) -> dict[str, str | None]:
     try:
         mapa = json.loads(arquivo.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         raise ErroBling("Não foi possível ler lojas.json. Copie lojas.exemplo.json para lojas.json e preencha os IDs das suas lojas.") from None
     if not isinstance(mapa, dict) or any(
-        not isinstance(k, str) or not k.isdigit() or not isinstance(v, str)
-        or not v.strip() or len(v) > 40 for k, v in mapa.items()
+        not isinstance(k, str) or not k.isdigit()
+        or (v is not None and (not isinstance(v, str) or not v.strip() or len(v) > 40))
+        for k, v in mapa.items()
     ):
-        raise ErroBling("lojas.json deve relacionar cada ID numérico ao nome do marketplace (até 40 caracteres).")
-    return {k: v.strip() for k, v in mapa.items()}
+        raise ErroBling("lojas.json deve relacionar cada ID numérico a um nome (até 40 caracteres) ou null para excluir.")
+    return {k: v.strip() if v is not None else None for k, v in mapa.items()}
 
 
-def coletar_registros(cliente: Cliente, dia: date, lojas: dict[str, str], progresso=print) -> list[Registro]:
-    notas = consultar_notas(cliente, dia)
+def _loja_excluida(nota: dict, lojas: dict[str, str | None]) -> bool:
+    loja_id = str((nota.get("loja") or {}).get("id") or "0")
+    return loja_id in lojas and lojas[loja_id] is None
+
+
+def coletar_registros(cliente: Cliente, dia: date, lojas: dict[str, str | None], progresso=print) -> list[Registro]:
+    notas = [n for n in consultar_notas(cliente, dia) if not _loja_excluida(n, lojas)]
     registros = []
     for posicao, nota in enumerate(notas, 1):
         if progresso:
@@ -76,6 +82,8 @@ def coletar_registros(cliente: Cliente, dia: date, lojas: dict[str, str], progre
             raise ErroBling("O Bling retornou detalhes incompatíveis com a nota consultada.")
         if str(detalhe.get("situacao")) == "2":
             continue  # Cancelamento ocorrido depois da listagem inicial.
+        if _loja_excluida(detalhe, lojas):
+            continue  # A loja pode ter mudado depois da listagem inicial.
         if (str(detalhe.get("tipo")) != "1" or detalhe.get("situacao") is None
                 or str(detalhe.get("dataEmissao", ""))[:10] != dia.isoformat()
                 or not str(detalhe.get("numero", "")).strip()):

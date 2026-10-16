@@ -21,6 +21,24 @@ def nota(identificador, **campos):
 
 
 class DadosTests(unittest.TestCase):
+    @patch("roteiro.consultar_notas", return_value=[nota(1), nota(2, loja={"id": 456})])
+    def test_loja_excluida_nao_entra_no_roteiro_nem_requer_detalhes(self, _lista):
+        cliente = Mock(get=Mock(return_value={"data": nota(1)}))
+        resultado = roteiro.coletar_registros(cliente, DIA, {"123": "Mercado Livre", "456": None}, progresso=None)
+        self.assertEqual([r.id_nota for r in resultado], ["1"])
+        cliente.get.assert_called_once_with("/nfe/1", {})
+
+    @patch("roteiro.consultar_notas", return_value=[nota(1)])
+    def test_exclusao_tambem_e_conferida_no_detalhe_atualizado(self, _lista):
+        cliente = Mock(get=Mock(return_value={"data": nota(1, loja={"id": 456})}))
+        self.assertEqual(roteiro.coletar_registros(cliente, DIA, {"456": None}, progresso=None), [])
+
+    def test_configuracao_null_e_preservada_como_exclusao(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            arquivo = Path(pasta) / "lojas.json"
+            arquivo.write_text('{"123":"Mercado Livre", "456":null}', encoding="utf-8")
+            self.assertEqual(roteiro.carregar_lojas(arquivo), {"123": "Mercado Livre", "456": None})
+
     @patch("roteiro.consultar_notas", return_value=[nota(1), nota(2)])
     def test_detalhes_incluem_pedido_longo_e_cancelamento_posterior_e_excluido(self, _lista):
         cliente = Mock()
