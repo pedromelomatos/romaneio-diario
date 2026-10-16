@@ -5,16 +5,20 @@ Automação do roteiro dos motoristas da distribuidora com a API v3 do Bling.
 ## Pacote portátil para compartilhar
 
 O ZIP `RomaneioDiario_Portatil_Windows.zip` inclui seu próprio Python. O destinatário
-extrai a pasta completa e abre `INICIAR.cmd`, sem instalar Python ou bibliotecas.
-O menu permite conectar ao Bling, configurar os marketplaces e exclusões, escolher
-a data, gerar o Excel, abrir os resultados e ativar o agendamento.
+extrai a pasta completa e abre `1_CONFIGURAR.cmd` na primeira vez. Depois, basta
+abrir `2_GERAR_ROTEIRO.cmd` para gerar o roteiro de hoje, sem instalar Python ou bibliotecas.
+A raiz contém os dois atalhos e o `LEIA-ME.txt`; código e runtime ficam em `programa/`.
+Os arquivos Excel ficam em `roteiros/`, e o único log fica em `logs/execucao.log`.
+Não há menus, seleção de data nem agendamento no pacote simplificado.
 
 O pacote comum não inclui credenciais, `lojas.json`, notas, logs ou arquivos de testes.
-O pacote com sufixo `_Configurado` inclui `tokens.json` com **Client ID, Client Secret
-e redirect_uri**. Nele, basta escolher Conectar e autorizar no navegador, sem digitar
+O pacote com sufixo `_Configurado` inclui `programa/tokens.json` com **Client ID, Client Secret
+e redirect_uri**, além de `programa/lojas.json` com os nomes e exclusões da empresa.
+Nele, basta abrir o atalho de configuração e autorizar no navegador, sem digitar
 as credenciais do aplicativo. Esse JSON é legível: distribua o pacote configurado
 apenas a pessoas de confiança. Não publique o arquivo nem esse ZIP no GitHub.
-Cada usuário autoriza a conexão e configura suas lojas na primeira utilização.
+Cada usuário autoriza a conexão na primeira utilização. O pacote configurado já
+leva as lojas e exclusões conferidas; o pacote comum pede essa configuração uma vez.
 Veja `LEIA-ME.txt` para o passo a passo e os requisitos de Windows.
 
 Para reconstruir o ZIP em um Windows com Python de desenvolvimento:
@@ -36,7 +40,7 @@ e os ZIPs ficam ignorados pelo Git. O pacote comum continua disponível sem segr
 
 O empacotador baixa a distribuição embutível oficial do Python, confere o SHA256
 publicado no manifesto e inclui uma lista explícita de arquivos. O ambiente Python
-portátil é usado também nas execuções agendadas. O runtime e o ZIP ficam em pastas
+portátil acompanha o pacote simplificado. O runtime e o ZIP ficam em pastas
 ignoradas pelo Git; a licença oficial acompanha o pacote.
 
 ## Funcionalidades
@@ -108,8 +112,9 @@ erros temporários. A troca de tokens não é repetida automaticamente.
 
 ## Usar em outros computadores
 
-Envie o ZIP portátil e peça para extrair e abrir `INICIAR.cmd`. Com o pacote
-configurado, a opção Conectar abre a autorização sem pedir Client ID ou Secret.
+Envie o ZIP portátil e peça para extrair e abrir `1_CONFIGURAR.cmd`. Com o pacote
+configurado, o atalho abre a autorização sem pedir Client ID ou Secret. Depois,
+`2_GERAR_ROTEIRO.cmd` gera o Excel de hoje na pasta `roteiros`.
 Autorize em cada computador/usuário. Não copie a pasta de credenciais do Windows. Este aplicativo
 privado atende à própria conta Bling; para outra empresa, configure um aplicativo
 e uma autorização apropriados àquela conta.

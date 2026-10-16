@@ -17,10 +17,7 @@ VERSAO = "3.13.16"
 URL = "https://www.python.org/ftp/python/3.13.16/python-3.13.16-embeddable-win32.zip"
 SHA256 = "9d6e5a436f8d417f70387b22e49b56f46dd6328423f8e759cee74c427aa1b6fc"
 ARQUIVOS = (
-    "INICIAR.cmd", "LEIA-ME.txt", "app.py", "bling.py", "roteiro.py",
-    "modelo_roteiro.xlsx", "lojas.exemplo.json", "conectar_bling.cmd",
-    "conferir_notas.cmd", "gerar_roteiro.cmd", "agendar_roteiro.cmd",
-    "agendar_roteiro.ps1", "executar_agendado.ps1",
+    "app.py", "bling.py", "roteiro.py", "portatil.py", "modelo_roteiro.xlsx",
 )
 
 
@@ -37,12 +34,17 @@ def main() -> int:
                         help="Incluir Client ID e Secret de tokens.json; nunca incluir tokens de acesso.")
     args = parser.parse_args()
     credenciais = None
+    lojas = None
     if args.com_credenciais:
         sys.path.insert(0, str(BASE))
         import bling
         credenciais = bling.carregar_aplicacao(BASE / "tokens.json")
         if not credenciais:
             raise RuntimeError("Crie tokens.json com as credenciais do aplicativo antes de empacotar.")
+        # Pacote interno da empresa: preservar nomes de lojas e exclusões já conferidos.
+        if (BASE / "lojas.json").is_file():
+            import roteiro
+            lojas = roteiro.carregar_lojas(BASE / "lojas.json")
     build = BASE / ".build"
     downloads = build / "downloads"
     downloads.mkdir(parents=True, exist_ok=True)
@@ -61,7 +63,8 @@ def main() -> int:
     if not trabalho.is_relative_to(build.resolve()):
         raise RuntimeError("Pasta de preparação fora do projeto.")
     raiz = trabalho / "RomaneioDiario"
-    runtime = raiz / "_runtime"
+    programa = raiz / "programa"
+    runtime = programa / "_runtime"
     runtime.mkdir(parents=True)
     with ZipFile(download) as oficial:
         verificar_zip_seguro(oficial)
@@ -73,23 +76,38 @@ def main() -> int:
         raise RuntimeError("Configuração inesperada no Python embutível.")
     arquivos_pth[0].write_text("python313.zip\n.\n..\n", encoding="ascii")
     for nome in ARQUIVOS:
-        destino = raiz / nome
-        if Path(nome).suffix in {".cmd", ".ps1"}:
-            texto = (BASE / nome).read_text(encoding="utf-8")
-            destino.write_bytes(texto.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8"))
-        elif Path(nome).suffix == ".txt":
-            destino.write_bytes((BASE / nome).read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8-sig"))
-        else:
-            shutil.copy2(BASE / nome, destino)
+        shutil.copy2(BASE / nome, programa / nome)
+    (raiz / "LEIA-ME.txt").write_bytes((BASE / "LEIA-ME.txt").read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8-sig"))
+    for nome, acao in (("1_CONFIGURAR.cmd", "configurar"), ("2_GERAR_ROTEIRO.cmd", "gerar")):
+        atalho = f'''@echo off
+setlocal
+chcp 65001 >nul
+cd /d "%~dp0"
+if not exist "%~dp0programa\\_runtime\\python.exe" (
+    echo Extraia a pasta inteira do ZIP antes de abrir este atalho.
+    pause
+    exit /b 1
+)
+"%~dp0programa\\_runtime\\python.exe" -X utf8 "%~dp0programa\\portatil.py" {acao} %*
+set "resultado=%errorlevel%"
+echo.
+pause
+exit /b %resultado%
+'''
+        (raiz / nome).write_bytes(atalho.replace("\n", "\r\n").encode("utf-8"))
+    for nome in ("roteiros", "logs"):
+        (raiz / nome).mkdir()
     componentes = f"Python {VERSAO}, Windows x86, distribuicao embutivel oficial.\nOrigem: {URL}\nSHA256: {SHA256}\nLicenca: _runtime/LICENSE.txt\n\nDocumentacao: https://docs.python.org/3/using/windows.html#the-embeddable-package\n"
-    (raiz / "COMPONENTES.txt").write_text(componentes, encoding="utf-8")
+    (programa / "COMPONENTES.txt").write_text(componentes, encoding="utf-8")
     if credenciais:
         # Só estes três campos saem do ambiente de desenvolvimento. Nunca distribuir
         # access_token, refresh_token, acesso.dat ou autorizações de outra máquina.
-        (raiz / "tokens.json").write_text(json.dumps(credenciais, indent=2) + "\n", encoding="utf-8")
+        (programa / "tokens.json").write_text(json.dumps(credenciais, indent=2) + "\n", encoding="utf-8")
+    if lojas is not None:
+        (programa / "lojas.json").write_text(json.dumps(lojas, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # Testar o Python fornecido com o ZIP. Não consulta a conta real nem agenda tarefas.
-    resultado = subprocess.run([str(runtime / "python.exe"), "-X", "utf8", str(raiz / "app.py"), "--diagnostico"],
+    resultado = subprocess.run([str(runtime / "python.exe"), "-X", "utf8", str(programa / "portatil.py"), "--diagnostico"],
                                cwd=trabalho, capture_output=True, text=True, encoding="utf-8", timeout=30)
     if resultado.returncode:
         raise RuntimeError("O ambiente portátil não passou na verificação: " + resultado.stderr[:1000])
@@ -104,6 +122,8 @@ def main() -> int:
         for arquivo in sorted(raiz.rglob("*")):
             if arquivo.is_file() and "__pycache__" not in arquivo.parts:
                 pacote.write(arquivo, arquivo.relative_to(trabalho).as_posix())
+        for nome in ("roteiros", "logs"):
+            pacote.writestr(f"RomaneioDiario/{nome}/", "")
     relatorio = {"zip": str(destino_zip), "bytes": destino_zip.stat().st_size,
                  "runtime_sha256": digest, "pasta_teste": str(raiz), "diagnostico": resultado.stdout.strip(),
                  "zip_sha256": hashlib.sha256(destino_zip.read_bytes()).hexdigest()}

@@ -19,6 +19,8 @@ client_secret*.json
 
 # Roteiros, logs e arquivos auxiliares gerados
 outputs/
+/roteiros/
+/logs/
 *.log
 *.inspect.ndjson
 ~$*
