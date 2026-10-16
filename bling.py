@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import ctypes
+from contextlib import contextmanager
 from datetime import date, datetime
 import getpass
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -23,6 +24,7 @@ import webbrowser
 API = "https://api.bling.com.br/Api/v3"
 AUTHORIZE = "https://www.bling.com.br/Api/v3/oauth/authorize"
 CALLBACK = "http://localhost:8765/callback"
+SITUACAO_EMITIDA_DANFE = 6
 
 
 class ErroBling(Exception):
@@ -259,7 +261,7 @@ def consultar_notas(cliente: Cliente, dia: date) -> list[dict]:
         resposta = cliente.get("/nfe", {
             "tipo": 1, "dataEmissaoInicial": f"{dia.isoformat()} 00:00:00",
             "dataEmissaoFinal": f"{dia.isoformat()} 23:59:59", "pagina": pagina, "limite": 100,
-            # Sem situacao: a API exclui canceladas por padrão. Validamos também abaixo.
+            "situacao": SITUACAO_EMITIDA_DANFE,
         })
         registros = resposta.get("data")
         if not isinstance(registros, list):
@@ -282,25 +284,59 @@ def consultar_notas(cliente: Cliente, dia: date) -> list[dict]:
         pagina += 1
     selecionadas = []
     for nota in notas.values():
-        if str(nota.get("situacao")) == "2":
+        if nota.get("situacao") is None:
+            raise ErroBling("Não foi possível confirmar a situação de uma nota. A conferência foi interrompida.")
+        if str(nota["situacao"]) != str(SITUACAO_EMITIDA_DANFE):
             continue
         if (str(nota.get("tipo")) != "1" or str(nota.get("dataEmissao", ""))[:10] != dia.isoformat()
-                or nota.get("numero") is None or nota.get("situacao") is None):
+                or nota.get("numero") is None):
             raise ErroBling("Uma nota não corresponde aos filtros esperados. Confira os dados antes de continuar.")
         selecionadas.append(nota)
     return sorted(selecionadas, key=lambda n: (str(n["numero"]).zfill(20), str(n["id"])), reverse=True)
 
 
+def credenciais_aplicacao(dados: dict) -> dict:
+    """Selecionar apenas o cadastro do app, nunca copiar tokens de uma conexão."""
+    if not isinstance(dados, dict):
+        raise ErroBling("Configuração do aplicativo inválida no tokens.json.")
+    novo = {}
+    for campo in ("client_id", "client_secret", "redirect_uri"):
+        valor = dados.get(campo, CALLBACK if campo == "redirect_uri" else None)
+        if not isinstance(valor, str) or not valor.strip():
+            raise ErroBling(f"Preencha o campo {campo} no tokens.json.")
+        novo[campo] = valor.strip()
+    validar_callback(novo["redirect_uri"])
+    return novo
+
+
+def carregar_aplicacao(arquivo: Path | None = None) -> dict:
+    arquivo = arquivo if arquivo is not None else Path(__file__).resolve().parent / "tokens.json"
+    try:
+        dados = json.loads(arquivo.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return {}
+    except (ValueError, UnicodeError, OSError):
+        raise ErroBling("Não foi possível ler tokens.json. Confira o arquivo do aplicativo.") from None
+    return credenciais_aplicacao(dados)
+
+
 def conectar(cofre: Cofre, config: dict) -> None:
-    print("No Bling, abra o aplicativo e localize Client ID e Client Secret.")
-    print("Digite as credenciais aqui. O Client Secret não aparecerá durante a digitação.")
-    client_id = input("Client ID: ").strip()
-    client_secret = getpass.getpass("Client Secret: ").strip()
-    if not client_id or not client_secret:
-        raise ErroBling("Preencha o Client ID e o Client Secret.")
-    retorno = input(f"Link de redirecionamento [{CALLBACK}]: ").strip() or CALLBACK
-    validar_callback(retorno)
-    novo = {"client_id": client_id, "client_secret": client_secret, "redirect_uri": retorno}
+    novo = carregar_aplicacao()
+    if novo:
+        print("Aplicativo configurado pelo tokens.json. Basta autorizar no navegador.")
+    elif config.get("client_id") and config.get("client_secret"):
+        novo = credenciais_aplicacao(config)
+        print("Usando o aplicativo já configurado neste usuário Windows.")
+    else:
+        print("No Bling, abra o aplicativo e localize Client ID e Client Secret.")
+        print("Digite as credenciais aqui. O Client Secret não aparecerá durante a digitação.")
+        client_id = input("Client ID: ").strip()
+        client_secret = getpass.getpass("Client Secret: ").strip()
+        if not client_id or not client_secret:
+            raise ErroBling("Preencha o Client ID e o Client Secret.")
+        retorno = input(f"Link de redirecionamento [{CALLBACK}]: ").strip() or CALLBACK
+        novo = credenciais_aplicacao({"client_id": client_id, "client_secret": client_secret,
+                                      "redirect_uri": retorno})
     # Preservar o acesso anterior até uma nova autorização ser concluída com sucesso.
     autorizar(Cliente(cofre, novo))
 
@@ -314,6 +350,31 @@ def data_argumento(valor: str) -> date:
     raise argparse.ArgumentTypeError("Informe a data como DD/MM/AAAA ou AAAA-MM-DD.")
 
 
+@contextmanager
+def sessao_local():
+    """Uma única operação por usuário Windows, inclusive no menu portátil."""
+    raiz = os.environ.get("LOCALAPPDATA")
+    if not raiz or os.name != "nt":
+        raise ErroBling("Execute este assistente em uma conta de usuário do Windows.")
+    cofre = Cofre(Path(raiz) / "RomaneioDiario")
+    cofre.pasta.mkdir(parents=True, exist_ok=True)
+    import msvcrt
+    with (cofre.pasta / "execucao.lock").open("a+b") as trava:
+        if trava.seek(0, 2) == 0:
+            trava.write(b"0")
+            trava.flush()
+        trava.seek(0)
+        try:
+            msvcrt.locking(trava.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            raise ErroBling("Outra execução está usando a conexão do Bling. Aguarde a conclusão.") from None
+        try:
+            yield cofre, cofre.ler()
+        finally:
+            trava.seek(0)
+            msvcrt.locking(trava.fileno(), msvcrt.LK_UNLCK, 1)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Conexão e conferência de notas de saída do Bling.")
     parser.add_argument("acao", choices=("conectar", "conferir", "gerar"))
@@ -321,41 +382,22 @@ def main() -> int:
     parser.add_argument("--saida", type=Path, help="Caminho do novo Excel (somente para gerar).")
     args = parser.parse_args()
     try:
-        raiz = os.environ.get("LOCALAPPDATA")
-        if not raiz or os.name != "nt":
-            raise ErroBling("Execute este assistente em uma conta de usuário do Windows.")
-        cofre = Cofre(Path(raiz) / "RomaneioDiario")
-        cofre.pasta.mkdir(parents=True, exist_ok=True)
-        import msvcrt
-        with (cofre.pasta / "execucao.lock").open("a+b") as trava:
-            if trava.seek(0, 2) == 0:
-                trava.write(b"0")
-                trava.flush()
-            trava.seek(0)
-            try:
-                msvcrt.locking(trava.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError:
-                raise ErroBling("Outra execução está usando a conexão do Bling. Aguarde a conclusão.") from None
-            try:
-                config = cofre.ler()
-                if args.acao == "conectar":
-                    conectar(cofre, config)
+        with sessao_local() as (cofre, config):
+            if args.acao == "conectar":
+                conectar(cofre, config)
+            else:
+                if not config:
+                    raise ErroBling("Execute conectar antes da primeira conferência.")
+                dia = args.data or date.today()
+                if args.acao == "gerar":
+                    from roteiro import gerar
+                    gerar(Cliente(cofre, config), dia, args.saida)
                 else:
-                    if not config:
-                        raise ErroBling("Execute conectar antes da primeira conferência.")
-                    dia = args.data or date.today()
-                    if args.acao == "gerar":
-                        from roteiro import gerar
-                        gerar(Cliente(cofre, config), dia, args.saida)
-                    else:
-                        notas = consultar_notas(Cliente(cofre, config), dia)
-                        print(f"Notas de saída de {dia:%d/%m/%Y}, sem canceladas: {len(notas)}")
-                        for nota in notas:
-                            print(f"  NF {nota['numero']}")
-                        print("Conferência concluída.")
-            finally:
-                trava.seek(0)
-                msvcrt.locking(trava.fileno(), msvcrt.LK_UNLCK, 1)
+                    notas = consultar_notas(Cliente(cofre, config), dia)
+                    print(f"Notas de saída de {dia:%d/%m/%Y}, situação Emitida DANFE: {len(notas)}")
+                    for nota in notas:
+                        print(f"  NF {nota['numero']}")
+                    print("Conferência concluída.")
         return 0
     except (ErroBling, OSError) as exc:
         print(f"Erro: {exc}" if isinstance(exc, ErroBling) else "Erro ao acessar os arquivos locais. Verifique as permissões.")

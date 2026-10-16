@@ -2,10 +2,47 @@
 
 Automação do roteiro dos motoristas da distribuidora com a API v3 do Bling.
 
+## Pacote portátil para compartilhar
+
+O ZIP `RomaneioDiario_Portatil_Windows.zip` inclui seu próprio Python. O destinatário
+extrai a pasta completa e abre `INICIAR.cmd`, sem instalar Python ou bibliotecas.
+O menu permite conectar ao Bling, configurar os marketplaces e exclusões, escolher
+a data, gerar o Excel, abrir os resultados e ativar o agendamento.
+
+O pacote comum não inclui credenciais, `lojas.json`, notas, logs ou arquivos de testes.
+O pacote com sufixo `_Configurado` inclui `tokens.json` com **Client ID, Client Secret
+e redirect_uri**. Nele, basta escolher Conectar e autorizar no navegador, sem digitar
+as credenciais do aplicativo. Esse JSON é legível: distribua o pacote configurado
+apenas a pessoas de confiança. Não publique o arquivo nem esse ZIP no GitHub.
+Cada usuário autoriza a conexão e configura suas lojas na primeira utilização.
+Veja `LEIA-ME.txt` para o passo a passo e os requisitos de Windows.
+
+Para reconstruir o ZIP em um Windows com Python de desenvolvimento:
+
+```powershell
+py -3 tools/empacotar_portatil.py
+```
+
+Para gerar o pacote configurado, mantenha `tokens.json` junto ao código, com os
+campos `client_id`, `client_secret` e `redirect_uri`, e execute:
+
+```powershell
+py -3 tools/empacotar_portatil.py --com-credenciais
+```
+
+O empacotador seleciona somente esses três campos. Mesmo que o JSON de origem tenha
+outros campos, tokens de acesso e renovação não são incluídos. O `tokens.json` local
+e os ZIPs ficam ignorados pelo Git. O pacote comum continua disponível sem segredos.
+
+O empacotador baixa a distribuição embutível oficial do Python, confere o SHA256
+publicado no manifesto e inclui uma lista explícita de arquivos. O ambiente Python
+portátil é usado também nas execuções agendadas. O runtime e o ZIP ficam em pastas
+ignoradas pelo Git; a licença oficial acompanha o pacote.
+
 ## Funcionalidades
 
 Conexão OAuth e conferência das notas fiscais de saída por data de emissão,
-de todas as lojas, excluindo canceladas. Geração de Excel com sequência,
+de todas as lojas, somente na situação **Emitida DANFE**. Geração de Excel com sequência,
 número da nota e número da venda, agrupados por marketplace, com totais.
 As notas e os pedidos não são alterados no Bling.
 
@@ -21,8 +58,10 @@ O relógio e o fuso do computador devem estar corretos; a data padrão é a data
    - Escopos: **Notas Fiscais** e **Pedidos de Venda**, para visualização.
 2. Abra as informações do aplicativo e localize **Client ID** e **Client Secret**.
 3. Dê dois cliques em `conectar_bling.cmd`.
-4. Digite o Client ID e o Client Secret na janela local. O secret fica oculto.
-5. Pressione Enter para confirmar o endereço de retorno cadastrado.
+4. Com `tokens.json`, as credenciais são preenchidas automaticamente. Sem ele, o
+   programa aproveita o cadastro local existente ou pede Client ID e Client Secret.
+   O secret fica oculto durante a digitação.
+5. Na configuração manual, pressione Enter para confirmar o endereço de retorno.
 6. No navegador, confira a conta e autorize o aplicativo.
 7. Volte à janela e verifique a mensagem de conexão autorizada.
 
@@ -32,14 +71,16 @@ no próprio computador e é fechado ao terminar.
 
 As credenciais e os tokens são protegidos pela DPAPI do Windows em
 `%LOCALAPPDATA%\RomaneioDiario\acesso.dat`, fora desta pasta de código.
-Somente o mesmo usuário Windows pode abrir esse arquivo. Não envie credenciais,
-tokens nem URLs de retorno com `code` por chat, email ou capturas de tela.
+Somente o mesmo usuário Windows pode abrir esse arquivo. O `tokens.json` opcional
+contém uma cópia legível das credenciais do aplicativo para facilitar a instalação.
+Os tokens de acesso ficam apenas no cofre local, nunca no JSON distribuído. Não
+compartilhe tokens de acesso nem URLs de retorno com `code`.
 
 ## Conferir o resultado
 
 Dê dois cliques em `conferir_notas.cmd` para listar as notas do dia.
 Compare os números e o total com a tela **Notas Fiscais de Saída** do Bling,
-usando a mesma data e desconsiderando as canceladas.
+usando a mesma data e filtrando a situação **Emitida DANFE**.
 
 Pelo terminal, na pasta deste projeto:
 
@@ -52,10 +93,12 @@ py -3 bling.py gerar --data 16/10/2026
 ```
 
 A consulta percorre todas as páginas, elimina repetições por ID e valida tipo,
-data de emissão e situação. A API exclui canceladas por padrão e o programa
-também as remove caso apareçam na resposta. Todas as demais situações são mantidas,
-conforme a regra solicitada. Notas novas ou cancelamentos posteriores só são
-refletidos em uma nova consulta. Não há filtro pela data de criação da venda.
+data de emissão e situação. A consulta usa `situacao=6` (**Emitida DANFE**) e o
+programa também valida essa situação na resposta e nos detalhes de cada nota.
+Notas rejeitadas, canceladas, pendentes ou apenas autorizadas ficam fora do roteiro.
+Se a situação mudar durante a geração, a nota só permanece se ainda estiver como
+Emitida DANFE. Alterações posteriores são refletidas em uma nova consulta.
+Não há filtro pela data de criação da venda.
 
 O acesso é renovado automaticamente durante a conferência quando necessário.
 Se o Bling revogar a autorização ou expirar o refresh token, execute conectar
@@ -65,8 +108,9 @@ erros temporários. A troca de tokens não é repetida automaticamente.
 
 ## Usar em outros computadores
 
-Copie o código, `modelo_roteiro.xlsx`, `lojas.json` e os arquivos `.cmd`/`.ps1`, instale Python e execute a conexão em cada
-computador/usuário. Não copie a pasta de credenciais do Windows. Este aplicativo
+Envie o ZIP portátil e peça para extrair e abrir `INICIAR.cmd`. Com o pacote
+configurado, a opção Conectar abre a autorização sem pedir Client ID ou Secret.
+Autorize em cada computador/usuário. Não copie a pasta de credenciais do Windows. Este aplicativo
 privado atende à própria conta Bling; para outra empresa, configure um aplicativo
 e uma autorização apropriados àquela conta.
 
@@ -133,8 +177,8 @@ Versione o código, os testes, os atalhos, `lojas.exemplo.json` e
 formatação; os pedidos são preenchidos durante cada geração.
 
 O `.gitignore` exclui `lojas.json`, credenciais, ambientes Python, logs, arquivos
-temporários do Excel e a pasta `outputs`. As credenciais de uso ficam fora do
-repositório, protegidas pelo Windows. Os valores presentes nos testes e no
+temporários do Excel e a pasta `outputs`. O `tokens.json` local também é ignorado.
+Os tokens de uso ficam fora do repositório, protegidos pelo Windows. Os valores presentes nos testes e no
 arquivo de configuração de exemplo são fictícios.
 
 Antes de enviar alterações, confira os arquivos que serão incluídos:

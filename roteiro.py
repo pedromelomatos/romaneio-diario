@@ -15,7 +15,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile, ZIP_DEFLATED
 
-from bling import Cliente, ErroBling, consultar_notas
+from bling import Cliente, ErroBling, SITUACAO_EMITIDA_DANFE, consultar_notas
 
 
 BASE = Path(__file__).resolve().parent
@@ -80,11 +80,13 @@ def coletar_registros(cliente: Cliente, dia: date, lojas: dict[str, str | None],
         detalhe = cliente.get(f"/nfe/{nota['id']}", {}).get("data")
         if not isinstance(detalhe, dict) or str(detalhe.get("id")) != str(nota["id"]):
             raise ErroBling("O Bling retornou detalhes incompatíveis com a nota consultada.")
-        if str(detalhe.get("situacao")) == "2":
-            continue  # Cancelamento ocorrido depois da listagem inicial.
+        if detalhe.get("situacao") is None:
+            raise ErroBling("Não foi possível confirmar a situação atual de uma nota. A geração foi interrompida.")
+        if str(detalhe["situacao"]) != str(SITUACAO_EMITIDA_DANFE):
+            continue  # Só incluir Emitida DANFE, inclusive após mudanças na situação.
         if _loja_excluida(detalhe, lojas):
             continue  # A loja pode ter mudado depois da listagem inicial.
-        if (str(detalhe.get("tipo")) != "1" or detalhe.get("situacao") is None
+        if (str(detalhe.get("tipo")) != "1"
                 or str(detalhe.get("dataEmissao", ""))[:10] != dia.isoformat()
                 or not str(detalhe.get("numero", "")).strip()):
             raise ErroBling("Uma nota mudou durante a geração. Execute gerar novamente.")

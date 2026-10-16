@@ -5,9 +5,13 @@ New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
 $logFile = Join-Path $logFolder ('geracao_' + (Get-Date -Format 'yyyy-MM-dd_HHmmss_fff') + '.log')
 try {
     $bundledPython = Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
+    $portablePython = Join-Path $projectFolder '_runtime\python.exe'
     $programFile = Join-Path $projectFolder 'bling.py'
     $pythonArguments = @($programFile, 'gerar')
-    if (Test-Path -LiteralPath $bundledPython) {
+    if (Test-Path -LiteralPath $portablePython) {
+        $pythonExecutable = $portablePython
+        $pythonArguments = @('-X', 'utf8') + $pythonArguments
+    } elseif (Test-Path -LiteralPath $bundledPython) {
         $pythonExecutable = $bundledPython
     } elseif (Get-Command py -ErrorAction SilentlyContinue) {
         $pythonExecutable = (Get-Command py).Source

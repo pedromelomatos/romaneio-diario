@@ -21,6 +21,20 @@ def nota(identificador, **campos):
 
 
 class DadosTests(unittest.TestCase):
+    @patch("roteiro.consultar_notas", return_value=[nota(1)])
+    def test_situacao_alterada_no_detalhe_so_mantem_emitida_danfe(self, _lista):
+        for situacao in range(1, 12):
+            with self.subTest(situacao=situacao):
+                cliente = Mock(get=Mock(return_value={"data": nota(1, situacao=situacao)}))
+                registros = roteiro.coletar_registros(cliente, DIA, {"123": "Shopee"}, progresso=None)
+                self.assertEqual(len(registros), 1 if situacao == 6 else 0)
+
+    @patch("roteiro.consultar_notas", return_value=[nota(1)])
+    def test_detalhe_sem_situacao_interrompe_geracao(self, _lista):
+        cliente = Mock(get=Mock(return_value={"data": nota(1, situacao=None)}))
+        with self.assertRaises(bling.ErroBling):
+            roteiro.coletar_registros(cliente, DIA, {}, progresso=None)
+
     @patch("roteiro.consultar_notas", return_value=[nota(1), nota(2, loja={"id": 456})])
     def test_loja_excluida_nao_entra_no_roteiro_nem_requer_detalhes(self, _lista):
         cliente = Mock(get=Mock(return_value={"data": nota(1)}))

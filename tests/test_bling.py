@@ -26,15 +26,16 @@ def nota(identificador, numero, **campos):
 
 
 class ConsultaTests(unittest.TestCase):
-    def test_consulta_todas_paginas_exclui_canceladas_e_preserva_demais_situacoes(self):
+    def test_consulta_todas_paginas_inclui_somente_emitida_danfe(self):
         cliente = Mock()
         cliente.get.side_effect = [
             {"data": [nota(1, "000123"), nota(2, "000124", situacao=2)]},
-            {"data": [nota(3, "000122", situacao=5), nota(4, "000121", situacao=1)]},
+            {"data": [nota(3, "000122", situacao=5), nota(4, "000121", situacao=1),
+                      nota(5, "002807", situacao=4)]},
             {"data": []},
         ]
         resultado = bling.consultar_notas(cliente, DIA)
-        self.assertEqual([n["numero"] for n in resultado], ["000123", "000122", "000121"])
+        self.assertEqual([n["numero"] for n in resultado], ["000123"])
         for i, chamada in enumerate(cliente.get.call_args_list, 1):
             caminho, filtros = chamada.args
             self.assertEqual(caminho, "/nfe")
@@ -42,7 +43,14 @@ class ConsultaTests(unittest.TestCase):
             self.assertEqual(filtros["tipo"], 1)
             self.assertEqual(filtros["dataEmissaoInicial"], "2026-10-16 00:00:00")
             self.assertEqual(filtros["dataEmissaoFinal"], "2026-10-16 23:59:59")
-            self.assertNotIn("situacao", filtros)
+            self.assertEqual(filtros["situacao"], 6)
+
+    def test_demais_situacoes_sao_excluidas_mesmo_se_api_ignorar_filtro(self):
+        cliente = Mock()
+        cliente.get.side_effect = [
+            {"data": [nota(i, str(i), situacao=i) for i in range(1, 12)]}, {"data": []},
+        ]
+        self.assertEqual([n["situacao"] for n in bling.consultar_notas(cliente, DIA)], [6])
 
     def test_nenhuma_nota_e_resultado_valido(self):
         self.assertEqual(bling.consultar_notas(Mock(get=Mock(return_value={"data": []})), DIA), [])
@@ -84,6 +92,58 @@ class ConsultaTests(unittest.TestCase):
 
 
 class OAuthTests(unittest.TestCase):
+    @patch("builtins.print")
+    def test_pacote_configurado_nao_pede_credenciais_nem_importa_tokens(self, _print):
+        dados = {"client_id": "id-teste", "client_secret": "secret-teste", "tokens": {
+            "access_token": "nao-copiar", "refresh_token": "nao-copiar"}}
+        with tempfile.TemporaryDirectory() as pasta:
+            arquivo = Path(pasta) / "tokens.json"
+            arquivo.write_text(json.dumps(dados), encoding="utf-8-sig")
+            carregado = bling.carregar_aplicacao(arquivo)
+        self.assertEqual(carregado, {"client_id": "id-teste", "client_secret": "secret-teste",
+                                     "redirect_uri": bling.CALLBACK})
+        anterior = {"tokens": {"refresh_token": "acesso-anterior"}}
+        with patch("bling.carregar_aplicacao", return_value=carregado), \
+                patch("builtins.input") as entrada, patch("bling.getpass.getpass") as segredo, \
+                patch("bling.autorizar") as autorizar:
+            bling.conectar(Mock(), anterior)
+        entrada.assert_not_called()
+        segredo.assert_not_called()
+        self.assertEqual(autorizar.call_args.args[0].config, carregado)
+        self.assertEqual(anterior, {"tokens": {"refresh_token": "acesso-anterior"}})
+
+    def test_arquivo_invalido_nao_expoe_conteudo(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            arquivo = Path(pasta) / "tokens.json"
+            self.assertEqual(bling.carregar_aplicacao(arquivo), {})
+            for conteudo in ('{"client_secret":"segredo-nao-expor",', '[]',
+                             '{"client_id":"id","client_secret":123}',
+                             '{"client_id":"id","client_secret":"segredo-nao-expor","redirect_uri":"http://exemplo.com:1/cb"}'):
+                arquivo.write_text(conteudo, encoding="utf-8")
+                with self.subTest(conteudo=conteudo), self.assertRaises(bling.ErroBling) as erro:
+                    bling.carregar_aplicacao(arquivo)
+                self.assertNotIn("segredo-nao-expor", str(erro.exception))
+
+    @patch("builtins.print")
+    def test_reconectar_aproveita_cadastro_local_sem_reutilizar_tokens(self, _print):
+        config = {"client_id": "id", "client_secret": "secret", "tokens": {"refresh_token": "antigo"}}
+        with patch("bling.carregar_aplicacao", return_value={}), patch("builtins.input") as entrada, \
+                patch("bling.autorizar") as autorizar:
+            bling.conectar(Mock(), config)
+        entrada.assert_not_called()
+        self.assertNotIn("tokens", autorizar.call_args.args[0].config)
+        self.assertEqual(config["tokens"]["refresh_token"], "antigo")
+
+    @patch("builtins.print")
+    def test_sem_arquivo_nem_cadastro_mantem_configuracao_manual(self, _print):
+        with patch("bling.carregar_aplicacao", return_value={}), \
+                patch("builtins.input", side_effect=["id-manual", ""]), \
+                patch("bling.getpass.getpass", return_value="secret-manual"), \
+                patch("bling.autorizar") as autorizar:
+            bling.conectar(Mock(), {})
+        self.assertEqual(autorizar.call_args.args[0].config, {
+            "client_id": "id-manual", "client_secret": "secret-manual", "redirect_uri": bling.CALLBACK})
+
     def test_autorizacao_com_retorno_http_local_e_troca_imediata_do_codigo(self):
         with socket.socket() as reserva:
             reserva.bind(("127.0.0.1", 0))

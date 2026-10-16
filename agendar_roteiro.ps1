@@ -12,9 +12,9 @@ try {
     $trigger = New-ScheduledTaskTrigger -Daily -At '13:00'
     $windowsUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     $principal = New-ScheduledTaskPrincipal -UserId $windowsUser -LogonType Interactive -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings `
-        -Description 'Gera o roteiro de notas de saida do dia, excluindo canceladas.' | Out-Null
+        -Description 'Gera o roteiro de notas de saida do dia, somente na situacao Emitida DANFE.' | Out-Null
     Write-Host 'Agendamento criado: todos os dias as 13h, neste usuario Windows.'
     Write-Host 'Mantenha o computador ligado e o usuario conectado no horario.'
     Write-Host 'O agendamento usa a conexao Bling ja autorizada neste usuario.'
