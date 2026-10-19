@@ -26,7 +26,7 @@ def nota(identificador, numero, **campos):
 
 
 class ConsultaTests(unittest.TestCase):
-    def test_consulta_todas_paginas_inclui_somente_emitida_danfe(self):
+    def test_consulta_todas_paginas_inclui_emitida_danfe_e_autorizada(self):
         cliente = Mock()
         cliente.get.side_effect = [
             {"data": [nota(1, "000123"), nota(2, "000124", situacao=2)]},
@@ -35,7 +35,7 @@ class ConsultaTests(unittest.TestCase):
             {"data": []},
         ]
         resultado = bling.consultar_notas(cliente, DIA)
-        self.assertEqual([n["numero"] for n in resultado], ["000123"])
+        self.assertEqual([n["numero"] for n in resultado], ["000123", "000122"])
         for i, chamada in enumerate(cliente.get.call_args_list, 1):
             caminho, filtros = chamada.args
             self.assertEqual(caminho, "/nfe")
@@ -43,14 +43,22 @@ class ConsultaTests(unittest.TestCase):
             self.assertEqual(filtros["tipo"], 1)
             self.assertEqual(filtros["dataEmissaoInicial"], "2026-10-16 00:00:00")
             self.assertEqual(filtros["dataEmissaoFinal"], "2026-10-16 23:59:59")
-            self.assertEqual(filtros["situacao"], 6)
+            self.assertNotIn("situacao", filtros)
 
-    def test_demais_situacoes_sao_excluidas_mesmo_se_api_ignorar_filtro(self):
+    def test_demais_situacoes_sao_excluidas(self):
         cliente = Mock()
         cliente.get.side_effect = [
             {"data": [nota(i, str(i), situacao=i) for i in range(1, 12)]}, {"data": []},
         ]
-        self.assertEqual([n["situacao"] for n in bling.consultar_notas(cliente, DIA)], [6])
+        self.assertEqual([n["situacao"] for n in bling.consultar_notas(cliente, DIA)], [6, 5])
+
+    def test_situacoes_numericas_em_texto_tambem_sao_aceitas(self):
+        cliente = Mock()
+        cliente.get.side_effect = [
+            {"data": [nota(1, "001", situacao="5"), nota(2, "002", situacao="6")]},
+            {"data": []},
+        ]
+        self.assertEqual([n["id"] for n in bling.consultar_notas(cliente, DIA)], [2, 1])
 
     def test_nenhuma_nota_e_resultado_valido(self):
         self.assertEqual(bling.consultar_notas(Mock(get=Mock(return_value={"data": []})), DIA), [])

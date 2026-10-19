@@ -17,7 +17,7 @@ VERSAO = "3.13.16"
 URL = "https://www.python.org/ftp/python/3.13.16/python-3.13.16-embeddable-win32.zip"
 SHA256 = "9d6e5a436f8d417f70387b22e49b56f46dd6328423f8e759cee74c427aa1b6fc"
 ARQUIVOS = (
-    "app.py", "bling.py", "roteiro.py", "portatil.py", "modelo_roteiro.xlsx",
+    "app.py", "bling.py", "roteiro.py", "pdf_roteiro.py", "portatil.py", "modelo_roteiro.xlsx",
 )
 
 
@@ -26,6 +26,25 @@ def verificar_zip_seguro(arquivo: ZipFile) -> None:
         caminho = PurePosixPath(item.filename.replace("\\", "/"))
         if caminho.is_absolute() or ".." in caminho.parts or ":" in str(caminho):
             raise RuntimeError("O runtime contém um caminho inválido.")
+
+
+def incluir_bibliotecas_pdf(programa: Path, downloads: Path) -> list[dict]:
+    manifesto = json.loads((BASE / "tools/dependencias_pdf.json").read_text(encoding="utf-8"))
+    vendor = programa / "_vendor"
+    vendor.mkdir()
+    for item in manifesto:
+        arquivo = downloads / item["arquivo"]
+        if not arquivo.exists():
+            temporario = arquivo.with_suffix(".download")
+            with urlopen(item["url"], timeout=60) as entrada, temporario.open("wb") as saida:
+                shutil.copyfileobj(entrada, saida)
+            temporario.replace(arquivo)
+        if hashlib.sha256(arquivo.read_bytes()).hexdigest() != item["sha256"]:
+            raise RuntimeError("SHA256 inválido na biblioteca de PDF: " + item["arquivo"])
+        with ZipFile(arquivo) as pacote:
+            verificar_zip_seguro(pacote)
+            pacote.extractall(vendor)
+    return manifesto
 
 
 def main() -> int:
@@ -77,6 +96,7 @@ def main() -> int:
     arquivos_pth[0].write_text("python313.zip\n.\n..\n", encoding="ascii")
     for nome in ARQUIVOS:
         shutil.copy2(BASE / nome, programa / nome)
+    bibliotecas = incluir_bibliotecas_pdf(programa, downloads)
     (raiz / "LEIA-ME.txt").write_bytes((BASE / "LEIA-ME.txt").read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8-sig"))
     for nome, acao in (("1_CONFIGURAR.cmd", "configurar"), ("2_GERAR_ROTEIRO.cmd", "gerar")):
         atalho = f'''@echo off
@@ -98,6 +118,9 @@ exit /b %resultado%
     for nome in ("roteiros", "logs"):
         (raiz / nome).mkdir()
     componentes = f"Python {VERSAO}, Windows x86, distribuicao embutivel oficial.\nOrigem: {URL}\nSHA256: {SHA256}\nLicenca: _runtime/LICENSE.txt\n\nDocumentacao: https://docs.python.org/3/using/windows.html#the-embeddable-package\n"
+    componentes += "\nBibliotecas de PDF (licencas em _vendor/*dist-info/):\n"
+    for item in bibliotecas:
+        componentes += f"{item['arquivo']}\nOrigem: {item['url']}\nSHA256: {item['sha256']}\n"
     (programa / "COMPONENTES.txt").write_text(componentes, encoding="utf-8")
     if credenciais:
         # Só estes três campos saem do ambiente de desenvolvimento. Nunca distribuir
@@ -112,6 +135,16 @@ exit /b %resultado%
     if resultado.returncode:
         raise RuntimeError("O ambiente portátil não passou na verificação: " + resultado.stderr[:1000])
 
+    # Provar que o Python x86 realmente gera um PDF, sem bibliotecas do autor.
+    teste_pdf = subprocess.run(
+        [str(runtime / "python.exe"), "-X", "utf8", "-c",
+         "from pathlib import Path; from datetime import date, datetime; "
+         "from pdf_roteiro import salvar_pdf; "
+         "salvar_pdf([], date(2026, 10, 19), datetime(2026, 10, 19, 13), Path('teste.pdf'))"],
+        cwd=trabalho, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    if teste_pdf.returncode or not (trabalho / "teste.pdf").is_file():
+        raise RuntimeError("O PDF portátil não passou na verificação: " + teste_pdf.stderr[:1000])
+
     saidas = BASE / "outputs" / "distribuicao"
     saidas.mkdir(parents=True, exist_ok=True)
     nome = "RomaneioDiario_Portatil_Windows"
@@ -124,9 +157,17 @@ exit /b %resultado%
                 pacote.write(arquivo, arquivo.relative_to(trabalho).as_posix())
         for nome in ("roteiros", "logs"):
             pacote.writestr(f"RomaneioDiario/{nome}/", "")
+    atualizacao = saidas / "Atualizacao_Excel_e_PDF.zip"
+    with ZipFile(atualizacao, "w", ZIP_DEFLATED, compresslevel=9) as pacote:
+        for nome in ("app.py", "bling.py", "roteiro.py", "pdf_roteiro.py", "portatil.py", "COMPONENTES.txt"):
+            pacote.write(programa / nome, "programa/" + nome)
+        for arquivo in sorted((programa / "_vendor").rglob("*")):
+            if arquivo.is_file() and "__pycache__" not in arquivo.parts:
+                pacote.write(arquivo, "programa/" + arquivo.relative_to(programa).as_posix())
     relatorio = {"zip": str(destino_zip), "bytes": destino_zip.stat().st_size,
                  "runtime_sha256": digest, "pasta_teste": str(raiz), "diagnostico": resultado.stdout.strip(),
                  "zip_sha256": hashlib.sha256(destino_zip.read_bytes()).hexdigest()}
+    relatorio.update({"atualizacao": str(atualizacao), "pdf_portatil": "verificado"})
     (saidas / ("verificacao_configurado.json" if credenciais else "verificacao.json")).write_text(
         json.dumps(relatorio, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(relatorio, ensure_ascii=False))

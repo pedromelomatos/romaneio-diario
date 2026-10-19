@@ -47,7 +47,7 @@ def executar(acao: str) -> Path | None:
         destino = RAIZ / "roteiros" / f"ROTEIRO_{agora:%d_%m_%Y_%H%M%S_%f}.xlsx"
         print(f"\nGerando roteiro de hoje ({date.today():%d/%m/%Y}). Aguarde...")
         arquivo = roteiro.gerar(bling.Cliente(cofre, config), date.today(), destino, BASE / "lojas.json")
-    print("\nConcluído! O arquivo está na pasta roteiros, ao lado dos atalhos.")
+    print("\nConcluído! O Excel e o PDF estão na pasta roteiros, ao lado dos atalhos.")
     return arquivo
 
 
@@ -63,6 +63,8 @@ def main() -> int:
             print("Modelo ausente. Extraia o ZIP completo novamente.")
             return 1
         bling.carregar_aplicacao()
+        from pdf_roteiro import biblioteca_pdf
+        biblioteca_pdf()
         print("Pacote pronto para configurar e gerar roteiros.")
         return 0
     handler = None

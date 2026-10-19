@@ -22,12 +22,26 @@ def nota(identificador, **campos):
 
 class DadosTests(unittest.TestCase):
     @patch("roteiro.consultar_notas", return_value=[nota(1)])
-    def test_situacao_alterada_no_detalhe_so_mantem_emitida_danfe(self, _lista):
-        for situacao in range(1, 12):
+    def test_situacao_alterada_no_detalhe_mantem_emitida_danfe_e_autorizada(self, _lista):
+        for situacao in [*range(1, 12), "5", "6"]:
             with self.subTest(situacao=situacao):
                 cliente = Mock(get=Mock(return_value={"data": nota(1, situacao=situacao)}))
                 registros = roteiro.coletar_registros(cliente, DIA, {"123": "Shopee"}, progresso=None)
-                self.assertEqual(len(registros), 1 if situacao == 6 else 0)
+                self.assertEqual(len(registros), 1 if str(situacao) in {"5", "6"} else 0)
+
+    def test_consulta_e_detalhes_incluem_ambas_situacoes_e_respeitam_exclusoes(self):
+        notas = [nota(1), nota(2, situacao=5),
+                 nota(3, situacao=5, loja={"id": 456}), nota(4, situacao=2)]
+        cliente = Mock()
+        cliente.get.side_effect = [
+            {"data": notas}, {"data": []}, {"data": notas[1]}, {"data": notas[0]},
+        ]
+        registros = roteiro.coletar_registros(
+            cliente, DIA, {"123": "Shopee", "456": None}, progresso=None)
+        self.assertEqual([r.id_nota for r in registros], ["2", "1"])
+        self.assertEqual([r.pedido for r in registros], ["1234567890123456"] * 2)
+        self.assertEqual([c.args[0] for c in cliente.get.call_args_list],
+                         ["/nfe", "/nfe", "/nfe/2", "/nfe/1"])
 
     @patch("roteiro.consultar_notas", return_value=[nota(1)])
     def test_detalhe_sem_situacao_interrompe_geracao(self, _lista):

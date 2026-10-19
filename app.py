@@ -116,10 +116,10 @@ def executar_acao(acao: str) -> None:
                 print("\nVamos identificar as lojas antes do primeiro roteiro.")
                 configurar_lojas(cliente, dia)
             roteiro.gerar(cliente, dia)
-            print("\nO arquivo está na pasta de resultados (opção 5 do menu).")
+            print("\nO Excel e o PDF estão na pasta de resultados (opção 5 do menu).")
         elif acao == "7":
             notas = bling.consultar_notas(cliente, dia)
-            print(f"Notas de saída de {dia:%d/%m/%Y}, situação Emitida DANFE: {len(notas)}")
+            print(f"Notas de saída de {dia:%d/%m/%Y}, situações Emitida DANFE ou Autorizada (Aprovado): {len(notas)}")
             print("Esta conferência mostra todas as lojas, inclusive as excluídas do roteiro.")
 
 

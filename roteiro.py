@@ -15,7 +15,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile, ZIP_DEFLATED
 
-from bling import Cliente, ErroBling, SITUACAO_EMITIDA_DANFE, consultar_notas
+from bling import Cliente, ErroBling, SITUACOES_ROTEIRO, consultar_notas
 
 
 BASE = Path(__file__).resolve().parent
@@ -82,8 +82,8 @@ def coletar_registros(cliente: Cliente, dia: date, lojas: dict[str, str | None],
             raise ErroBling("O Bling retornou detalhes incompatíveis com a nota consultada.")
         if detalhe.get("situacao") is None:
             raise ErroBling("Não foi possível confirmar a situação atual de uma nota. A geração foi interrompida.")
-        if str(detalhe["situacao"]) != str(SITUACAO_EMITIDA_DANFE):
-            continue  # Só incluir Emitida DANFE, inclusive após mudanças na situação.
+        if str(detalhe["situacao"]) not in SITUACOES_ROTEIRO:
+            continue  # Revalidar as situações aceitas após mudanças na situação.
         if _loja_excluida(detalhe, lojas):
             continue  # A loja pode ter mudado depois da listagem inicial.
         if (str(detalhe.get("tipo")) != "1"
@@ -279,12 +279,32 @@ def salvar_excel(registros: list[Registro], dia: date, gerado: datetime, destino
 
 
 def gerar(cliente: Cliente, dia: date, destino: Path | None = None, lojas_arquivo: Path = BASE / "lojas.json") -> Path:
+    from pdf_roteiro import biblioteca_pdf, salvar_pdf
+    biblioteca_pdf()
     lojas = carregar_lojas(lojas_arquivo)
     registros = coletar_registros(cliente, dia, lojas)
     gerado = datetime.now()
     destino = destino or BASE / "outputs" / f"ROTEIRO_{dia.isoformat()}_{gerado:%H%M%S_%f}.xlsx"
-    arquivo = salvar_excel(registros, dia, gerado, destino.resolve())
-    print(f"\nRoteiro gerado: {arquivo}")
+    destino = destino.resolve()
+    pdf = destino.with_suffix(".pdf")
+    if destino.exists() or pdf.exists():
+        raise ErroBling("Já existe um Excel ou PDF com esse nome. Escolha outro nome ou gere novamente sem --saida.")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    # Preparar os dois arquivos com o mesmo conjunto de registros e horário.
+    # Só publicar o par depois de ambos terem sido gerados com sucesso.
+    with tempfile.TemporaryDirectory(dir=destino.parent) as pasta:
+        temporario = Path(pasta)
+        excel_pronto = salvar_excel(registros, dia, gerado, temporario / destino.name)
+        pdf_pronto = salvar_pdf(agrupar(registros), dia, gerado, temporario / pdf.name)
+        excel_pronto.rename(destino)
+        try:
+            pdf_pronto.rename(pdf)
+        except OSError:
+            destino.unlink()
+            raise
+    arquivo = destino
+    print(f"\nExcel gerado: {arquivo}")
+    print(f"PDF gerado: {pdf}")
     print(f"Total: {len(registros)} notas.")
     for grupo, quantidade in Counter(r.marketplace for r in registros).items():
         print(f"  {grupo}: {quantidade}")

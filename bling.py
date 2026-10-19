@@ -25,6 +25,8 @@ API = "https://api.bling.com.br/Api/v3"
 AUTHORIZE = "https://www.bling.com.br/Api/v3/oauth/authorize"
 CALLBACK = "http://localhost:8765/callback"
 SITUACAO_EMITIDA_DANFE = 6
+SITUACAO_AUTORIZADA = 5  # Situação de aprovação da NF-e na API do Bling.
+SITUACOES_ROTEIRO = frozenset({str(SITUACAO_AUTORIZADA), str(SITUACAO_EMITIDA_DANFE)})
 
 
 class ErroBling(Exception):
@@ -261,7 +263,8 @@ def consultar_notas(cliente: Cliente, dia: date) -> list[dict]:
         resposta = cliente.get("/nfe", {
             "tipo": 1, "dataEmissaoInicial": f"{dia.isoformat()} 00:00:00",
             "dataEmissaoFinal": f"{dia.isoformat()} 23:59:59", "pagina": pagina, "limite": 100,
-            "situacao": SITUACAO_EMITIDA_DANFE,
+            # Consultar todas as situações e selecionar as aceitas abaixo: a API
+            # aceita somente uma situação por chamada.
         })
         registros = resposta.get("data")
         if not isinstance(registros, list):
@@ -286,7 +289,7 @@ def consultar_notas(cliente: Cliente, dia: date) -> list[dict]:
     for nota in notas.values():
         if nota.get("situacao") is None:
             raise ErroBling("Não foi possível confirmar a situação de uma nota. A conferência foi interrompida.")
-        if str(nota["situacao"]) != str(SITUACAO_EMITIDA_DANFE):
+        if str(nota["situacao"]) not in SITUACOES_ROTEIRO:
             continue
         if (str(nota.get("tipo")) != "1" or str(nota.get("dataEmissao", ""))[:10] != dia.isoformat()
                 or nota.get("numero") is None):
@@ -394,7 +397,7 @@ def main() -> int:
                     gerar(Cliente(cofre, config), dia, args.saida)
                 else:
                     notas = consultar_notas(Cliente(cofre, config), dia)
-                    print(f"Notas de saída de {dia:%d/%m/%Y}, situação Emitida DANFE: {len(notas)}")
+                    print(f"Notas de saída de {dia:%d/%m/%Y}, situações Emitida DANFE ou Autorizada (Aprovado): {len(notas)}")
                     for nota in notas:
                         print(f"  NF {nota['numero']}")
                     print("Conferência concluída.")

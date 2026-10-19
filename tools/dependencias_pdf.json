@@ -1,0 +1,17 @@
+[
+  {
+    "arquivo": "reportlab-4.4.9-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/17/77/546e50edfaba6a0e58e8ec5fdc4446510227cec9e8f40172b60941d5a633/reportlab-4.4.9-py3-none-any.whl",
+    "sha256": "68e2d103ae8041a37714e8896ec9b79a1c1e911d68c3bd2ea17546568cf17bfd"
+  },
+  {
+    "arquivo": "pillow-12.1.0-cp313-cp313-win32.whl",
+    "url": "https://files.pythonhosted.org/packages/19/ce/c17334caea1db789163b5d855a5735e47995b0b5dc8745e9a3605d5f24c0/pillow-12.1.0-cp313-cp313-win32.whl",
+    "sha256": "a786bf667724d84aa29b5db1c61b7bfdde380202aaca12c3461afd6b71743171"
+  },
+  {
+    "arquivo": "charset_normalizer-3.4.4-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/0a/4c/925909008ed5a988ccbb72dcc897407e5d6d3bd72410d69e051fc0c14647/charset_normalizer-3.4.4-py3-none-any.whl",
+    "sha256": "7a32c560861a02ff789ad905a2fe94e3f840803362c84fecf1851cb4cf3dc37f"
+  }
+]

@@ -8,7 +8,7 @@ O ZIP `RomaneioDiario_Portatil_Windows.zip` inclui seu próprio Python. O destin
 extrai a pasta completa e abre `1_CONFIGURAR.cmd` na primeira vez. Depois, basta
 abrir `2_GERAR_ROTEIRO.cmd` para gerar o roteiro de hoje, sem instalar Python ou bibliotecas.
 A raiz contém os dois atalhos e o `LEIA-ME.txt`; código e runtime ficam em `programa/`.
-Os arquivos Excel ficam em `roteiros/`, e o único log fica em `logs/execucao.log`.
+Os arquivos Excel e PDF ficam em `roteiros/`, e o único log fica em `logs/execucao.log`.
 Não há menus, seleção de data nem agendamento no pacote simplificado.
 
 O pacote comum não inclui credenciais, `lojas.json`, notas, logs ou arquivos de testes.
@@ -40,19 +40,22 @@ e os ZIPs ficam ignorados pelo Git. O pacote comum continua disponível sem segr
 
 O empacotador baixa a distribuição embutível oficial do Python, confere o SHA256
 publicado no manifesto e inclui uma lista explícita de arquivos. O ambiente Python
-portátil acompanha o pacote simplificado. O runtime e o ZIP ficam em pastas
+portátil acompanha o pacote simplificado. As bibliotecas de PDF também são incluídas,
+com versões e hashes fixados em `tools/dependencias_pdf.json`, e suas licenças acompanham
+o pacote. O runtime e o ZIP ficam em pastas
 ignoradas pelo Git; a licença oficial acompanha o pacote.
 
 ## Funcionalidades
 
 Conexão OAuth e conferência das notas fiscais de saída por data de emissão,
-de todas as lojas, somente na situação **Emitida DANFE**. Geração de Excel com sequência,
+de todas as lojas, nas situações **Emitida DANFE** ou **Autorizada (Aprovado)**. Geração de Excel com sequência,
 número da nota e número da venda, agrupados por marketplace, com totais.
 As notas e os pedidos não são alterados no Bling.
 
 ## Conectar pela primeira vez
 
-Requisitos: Windows e Python 3.10 ou superior. Não é necessário instalar pacotes.
+Requisitos para executar pelo código: Windows e Python 3.10 ou superior, com
+`py -3 -m pip install -r requirements-pdf.txt`. O ZIP portátil já inclui tudo.
 Os atalhos também aproveitam o Python incluído no Codex quando disponível.
 O relógio e o fuso do computador devem estar corretos; a data padrão é a data local.
 
@@ -84,7 +87,7 @@ compartilhe tokens de acesso nem URLs de retorno com `code`.
 
 Dê dois cliques em `conferir_notas.cmd` para listar as notas do dia.
 Compare os números e o total com a tela **Notas Fiscais de Saída** do Bling,
-usando a mesma data e filtrando a situação **Emitida DANFE**.
+usando a mesma data e as situações **Emitida DANFE** e **Autorizada (Aprovado)**.
 
 Pelo terminal, na pasta deste projeto:
 
@@ -97,11 +100,12 @@ py -3 bling.py gerar --data 16/10/2026
 ```
 
 A consulta percorre todas as páginas, elimina repetições por ID e valida tipo,
-data de emissão e situação. A consulta usa `situacao=6` (**Emitida DANFE**) e o
-programa também valida essa situação na resposta e nos detalhes de cada nota.
-Notas rejeitadas, canceladas, pendentes ou apenas autorizadas ficam fora do roteiro.
-Se a situação mudar durante a geração, a nota só permanece se ainda estiver como
-Emitida DANFE. Alterações posteriores são refletidas em uma nova consulta.
+data de emissão e situação. A consulta lista as notas do dia sem restringir a uma
+única situação na API e seleciona os códigos `6` (**Emitida DANFE**) e `5`
+(**Autorizada**, correspondente a **Aprovado**) na resposta e nos detalhes de cada nota.
+Notas rejeitadas, canceladas ou pendentes ficam fora do roteiro.
+Se a situação mudar durante a geração, a nota só permanece se ainda estiver em
+uma dessas duas situações. Alterações posteriores são refletidas em uma nova consulta.
 Não há filtro pela data de criação da venda.
 
 O acesso é renovado automaticamente durante a conferência quando necessário.
@@ -114,7 +118,7 @@ erros temporários. A troca de tokens não é repetida automaticamente.
 
 Envie o ZIP portátil e peça para extrair e abrir `1_CONFIGURAR.cmd`. Com o pacote
 configurado, o atalho abre a autorização sem pedir Client ID ou Secret. Depois,
-`2_GERAR_ROTEIRO.cmd` gera o Excel de hoje na pasta `roteiros`.
+`2_GERAR_ROTEIRO.cmd` gera o Excel e o PDF de hoje na pasta `roteiros`.
 Autorize em cada computador/usuário. Não copie a pasta de credenciais do Windows. Este aplicativo
 privado atende à própria conta Bling; para outra empresa, configure um aplicativo
 e uma autorização apropriados àquela conta.
@@ -122,8 +126,21 @@ e uma autorização apropriados àquela conta.
 ## Gerar o roteiro
 
 Dê dois cliques em `gerar_roteiro.cmd`. O programa consulta os detalhes de cada
-nota e grava o Excel na pasta `outputs`, ao lado do código. Cada execução cria
-um arquivo com data e horário; roteiros anteriores não são substituídos.
+nota e grava o Excel e o PDF na pasta `outputs`, ao lado do código. Cada execução cria
+um par de arquivos com o mesmo nome, data e horário; roteiros anteriores não são substituídos.
+Os dois formatos usam exatamente os mesmos registros da mesma consulta ao Bling.
+O PDF segue o modelo A4 enviado: Mercado Livre primeiro e Shopee em uma página própria,
+com as mesmas notas, pedidos, sequência e totais do Excel. Cada página comporta até
+55 notas. Quando um marketplace ultrapassa esse limite, continua em novas páginas,
+sem misturar os grupos e sem cortar registros. Outros marketplaces também ganham
+páginas próprias. Pedidos ausentes aparecem como **NÃO INFORMADO** nos dois formatos.
+O PDF fica ao lado do Excel também quando se usa `--saida`.
+
+Para atualizar um computador que já usa o pacote portátil, extraia
+`outputs/distribuicao/Atualizacao_Excel_e_PDF.zip` dentro da pasta `RomaneioDiario`
+existente e aceite substituir os arquivos de `programa/`, incluindo a pasta `_vendor`.
+A atualização não contém credenciais ou configurações de lojas. Não é necessário
+reautorizar a conexão. O empacotador gera esse ZIP junto com o pacote completo.
 Se a nota não tiver número de venda, a célula fica destacada como **NÃO INFORMADO**
 e o programa mostra quais notas precisam de conferência. A nota continua no total.
 
@@ -170,6 +187,7 @@ executado somente onde a geração diária deve ocorrer.
 ## Verificação do código
 
 ```powershell
+py -3 -m pip install -r requirements-dev.txt
 py -3 -m unittest discover -s tests -v
 ```
 
